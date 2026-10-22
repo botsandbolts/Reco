@@ -1,6 +1,7 @@
 """Full-catalogue, leave-last-out metrics on chronologically held events."""
 from __future__ import annotations
 import numpy as np
+from .recommender import _top_finite_scores
 
 
 def evaluate_models(model, holdout, already_seen=None, k=10):
@@ -22,7 +23,7 @@ def evaluate_models(model, holdout, already_seen=None, k=10):
                            if int(v) in model.movie_to_idx)
             if exclude:
                 scores[list(exclude)] = -np.inf
-            top = np.argsort(-scores, kind="stable")[:k]
+            top = _top_finite_scores(scores, k)
             catalogue_coverage.update(int(x) for x in top)
             if target in top:
                 hits += 1
