@@ -18,7 +18,7 @@ The 'research-patches/' directory preserves the progression of experiments as ZI
 | Generative retrieval | 'tiger_research_suite_complete.zip', 'tiger_decoder_fix.zip' | TIGER-*inspired* semantic-ID Transformer; decoder bug was patched; not a paper-identical reproduction |
 | Temporal FM/DeepFM | 'temporal_hybrid_fm_patch.zip', 'temporal_fm_ranking_patch.zip', 'temporal_fm_pairwise_ranking_patch.zip' | Explicit rating prediction and top-K ranking are **different objectives** |
 | Ranking improvements | 'fm_serious_training_patch.zip', 'temporal_fm_rating_aware_patch.zip', 'temporal_fm_regularization_patch.zip', 'temporal_fm_lambdamart_patch.zip' | Experimental BPR training, regularization and second-stage LambdaMART |
-| Historical exploration | 'bpr_umap_research_patch.zip', 'streamlit_all_in_one_patch.zip', 'sequential_recommenders_32m_patch.zip' | Preserved for provenance only; **BERT4Rec/SASRec are not part of the intended active architecture** |
+| Historical exploration | 'bpr_umap_research_patch.zip', 'streamlit_all_in_one_patch.zip', retired BERT4Rec/SASRec experiments (not included in active source) | Preserved for provenance only; **BERT4Rec/SASRec are not part of the intended active architecture** |
 
 **Important:** these are *overlapping* patch snapshots. Blindly extracting all archives in an arbitrary order can overwrite code and produce invalid checkpoints. Their earlier benchmarks used differing user samples, holdouts, candidate pools and negative-sampling rules. A clean future release should consolidate them into one tested package, migrate the 32M pipeline, retire the obsolete sequence-model code, and run end-to-end integration tests before claiming the advanced application is supported from a fresh clone.
 

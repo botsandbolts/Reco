@@ -13,14 +13,14 @@
 
 Use Python 3.12; a GitHub Codespace works without a local installation.
 
-\`\`\`bash
+```bash
 git clone https://github.com/herberton777/Reco.git
 cd Reco
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
 python -m src.train
 streamlit run app.py --server.address 0.0.0.0 --server.port 8501
-\`\`\`
+```
 
 The training command downloads the GroupLens MovieLens latest-small dataset, trains classical models and a LambdaMART ranker, and writes local files under 'artifacts/'. In Codespaces, open forwarded port **8501**. A clean checkout does **not** include a trained model or invented benchmark numbers.
 
@@ -57,7 +57,7 @@ See [Model card](reports/MODEL_CARD.md) and [Research status](docs/RESEARCH_STAT
 
 ## Repository layout
 
-\`\`\`text
+```text
 app.py                    Streamlit known-user, cold-start, benchmark demo
 src/                      Reproducible MovieLens Small implementations
 tests/                    Data-free synthetic regression tests
@@ -66,7 +66,7 @@ reports/MODEL_CARD.md     Methodology, assumptions, limitations
 docs/RESEARCH_STATUS.md   1M/32M prototype inventory and integration status
 research-patches/         Archived experimental source patches (not installed by default)
 .github/workflows/        Automated baseline tests
-\`\`\`
+```
 
 ## Engineering and reproduction notes
 
