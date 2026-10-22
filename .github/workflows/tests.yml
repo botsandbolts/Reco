@@ -1,13 +1,25 @@
 name: python-tests
-on: [push, pull_request]
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
 jobs:
-  test:
+  baseline:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
-      - run: pip install -r requirements-dev.txt
-      - run: python -m pytest -q
+          cache: pip
+      - name: Install baseline test dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Compile source and dashboard
+        run: python -m compileall -q src tests app.py
+      - name: Run offline regression tests
+        run: python -m pytest -q

@@ -20,6 +20,18 @@ def _minmax(x):
     lo, hi = float(x.min()), float(x.max())
     return np.zeros_like(x) if hi - lo < 1e-9 else (x - lo) / (hi - lo)
 
+def _top_finite_scores(scores, k):
+    """Return at most k eligible results; never return excluded (-inf) movies.
+
+    Handles catalogues where fewer than k items remain after filtering.
+    Stable sorting preserves catalogue order when scores tie.
+    """
+    if k < 1:
+        raise ValueError("k must be >= 1")
+    scores = np.asarray(scores)
+    eligible = np.flatnonzero(np.isfinite(scores))
+    return eligible[np.argsort(-scores[eligible], kind="stable")[:k]]
+
 
 class HybridRecommender:
     def __init__(self):
@@ -170,7 +182,7 @@ class HybridRecommender:
         exclude.update(self.movie_to_idx[int(v)] for v in extra_seen if int(v) in self.movie_to_idx)
         if exclude:
             scores[list(exclude)] = -np.inf
-        winners = np.argsort(-scores, kind="stable")[:k]
+        winners = _top_finite_scores(scores, k)
         return self._result(winners, scores)
 
     def recommend_from_favorites(self, movie_ids, k=10):
@@ -194,7 +206,7 @@ class HybridRecommender:
         else:
             scores = 0.65 * genre_score + 0.30 * cf_score + 0.05 * self.popularity
         scores[indexes] = -np.inf
-        return self._result(np.argsort(-scores, kind="stable")[:k], scores)
+        return self._result(_top_finite_scores(scores, k), scores)
 
     def _result(self, indexes, scores):
         result = self.movies.iloc[np.asarray(indexes)].copy()

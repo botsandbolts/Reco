@@ -11,10 +11,19 @@ st.caption("Research demo • MovieLens latest-small / GroupLens • No commerci
 
 ARTIFACT = Path("artifacts/recommender.joblib")
 if not ARTIFACT.exists():
-    st.error("Trained model not found: artifacts/recommender.joblib")
-    st.code("python -m src.train --neural\nstreamlit run app.py", language="bash")
-    st.info("To deploy: train in Codespaces, then add the trusted artifact to your "
-            "GitHub repository after checking the dataset's license conditions.")
+    st.info("The interactive demo is in setup mode: no trusted trained model artifact was found.")
+    st.markdown("""
+    ### What this project demonstrates
+    - **Recommendation:** popularity, collaborative SVD, genre similarity, and hybrid ranking.
+    - **Learning to rank:** LightGBM LambdaMART; optional PyTorch two-tower model.
+    - **Evaluation:** chronological positive holdouts, full-catalogue Recall@10 and NDCG@10.
+    - **Transparency:** training scripts, automated tests, and a methodology/model card.
+
+    **Run locally or in Codespaces:**
+    """)
+    st.code("python -m pip install -r requirements-dev.txt\npython -m src.train\nstreamlit run app.py", language="bash")
+    st.caption("MovieLens data are downloaded by the training command and have separate "
+               "GroupLens conditions. No benchmark result is shown without a generated report.")
     st.stop()
 
 @st.cache_resource(show_spinner="Loading recommendation engine …")
