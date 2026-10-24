@@ -127,8 +127,12 @@ def sample_umap_source(source, *, engine=None, cache_dir=None, count=2000,
         ids = np.asarray(engine.movie_ids, dtype="int64")
         movies = engine.movies[["movieId", "title", "genres"]].copy()
         lookup = movies.drop_duplicates("movieId").set_index("movieId")
-    elif source == "MovieLens 32M title sentence embeddings":
-        cache_dir = Path(cache_dir or "artifacts/semantic/ml32m_minilm_full_v1")
+    elif source in ("MovieLens 32M title sentence embeddings",
+                    "MovieLens 1M title sentence embeddings"):
+        cache_dir = Path(cache_dir or (
+            "artifacts/semantic/ml1m_minilm_full_v1"
+            if source.startswith("MovieLens 1M") else
+            "artifacts/semantic/ml32m_minilm_full_v1"))
         ids_file = cache_dir / "movie_ids.npy"
         vector_file = cache_dir / "title_embeddings.npy"
         if not ids_file.is_file() or not vector_file.is_file():
@@ -160,9 +164,13 @@ def sample_umap_source(source, *, engine=None, cache_dir=None, count=2000,
             "genres": selected["genres"].fillna("").to_numpy(),
         })
     else:
-        info = _movie_rows_for_ids(selected_ids, movie_files or (
-            "data/raw/ml-32m/movies.csv", "data/temporal/ml-32m/movies.csv",
-        ))
+        default_movie_files = (
+            ("data/raw/ml-1m/movies.csv", "data/temporal/ml-1m/movies.csv")
+            if source.startswith("MovieLens 1M") else
+            ("data/raw/ml-32m/movies.csv", "data/temporal/ml-32m/movies.csv")
+        )
+        info = _movie_rows_for_ids(selected_ids,
+                                   movie_files or default_movie_files)
     return matrix, info
 
 
@@ -187,6 +195,23 @@ def umap_projection(matrix, info, *, n_neighbors=20, min_dist=0.1, seed=42):
     output = info.reset_index(drop=True).copy()
     output["UMAP 1"] = positions[:, 0]
     output["UMAP 2"] = positions[:, 1]
+    output["Primary genre"] = output["genres"].fillna("").astype(str).str.split("|").str[0]
+    output["Primary genre"] = output["Primary genre"].replace({"": "Unknown", "(no genres listed)": "Unknown"})
+    return output
+
+
+def pca_projection(matrix, info, *, seed=42):
+    """Two-dimensional PCA as an optional, deterministic UMAP alternative."""
+    from sklearn.decomposition import PCA
+    if len(matrix) != len(info) or len(matrix) < 10:
+        raise ValueError("Invalid PCA data alignment")
+    if np.asarray(matrix).ndim != 2 or np.asarray(matrix).shape[1] < 2:
+        raise ValueError("PCA needs at least two embedding dimensions")
+    reducer = PCA(n_components=2, svd_solver="randomized", random_state=int(seed))
+    positions = reducer.fit_transform(np.asarray(matrix, dtype="float32"))
+    output = info.reset_index(drop=True).copy()
+    output["PCA 1"] = positions[:, 0]
+    output["PCA 2"] = positions[:, 1]
     output["Primary genre"] = output["genres"].fillna("").astype(str).str.split("|").str[0]
     output["Primary genre"] = output["Primary genre"].replace({"": "Unknown", "(no genres listed)": "Unknown"})
     return output
