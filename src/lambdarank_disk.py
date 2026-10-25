@@ -2,8 +2,8 @@
 
 Example: python -m src.lambdarank_disk --workspace auto --threads 2
 Uses an existing temporal data cache and checkpoint metadata. Missing or
-incompatible models are reported and excluded; fewer than two valid models
-stops explicitly. Only LightGBM rerankers are fitted.
+incompatible models are reported and excluded; a single model compares its
+original ranking with its LambdaRank reranker. Only LightGBM rerankers are fitted.
 """
 from __future__ import annotations
 import argparse
@@ -55,12 +55,40 @@ def choose_workspace(project, explicit='auto'):
     return available[0]
 
 
-def load_models(ev, provider, workspace, dataset, records):
+def requested_model(name, folder, requested):
+    return not requested or name in requested or folder.name in requested
+
+
+def single_comparison(output, name, threads):
+    from src import lambdarank_rerank as lr
+    lr.main(['train', '--train', str(output/'train.csv'), '--valid', str(output/'valid.csv'),
+             '--test', str(output/'test.csv'), '--manifest', str(output/'evaluation_manifest.json'),
+             '--models', name, '--threads', str(threads), '--output', str(output/'comparison')])
+    folder = output/'comparison'
+    variant = json.loads((folder/'summary.json').read_text())['variants'][name]
+    baseline, reranked = variant['baseline_test'], variant['test']
+    fields = list(baseline)
+    with (folder/'comparison.csv').open('w', newline='') as stream:
+        writer = csv.writer(stream)
+        writer.writerow(['variant', *fields])
+        writer.writerow(['frozen_'+name, *[baseline[key] for key in fields]])
+        writer.writerow(['lambdarank_'+name, *[reranked[key] for key in fields]])
+    lines = ['# Saved FM versus LambdaRank', '',
+             'Both variants use exactly the same retrieved candidate pool.', '',
+             '| Metric | Frozen model | LambdaRank |', '| --- | ---: | ---: |']
+    lines += [f'| {key} | {baseline[key]:.6f} | {reranked[key]:.6f} |' for key in fields]
+    (folder/'comparison.md').write_text('\n'.join(lines)+'\n')
+    print('Comparison:', folder/'comparison.md', flush=True)
+
+
+def load_models(ev, provider, workspace, dataset, records, requested=None):
     import numpy as np
     import torch
     from temporal_fm.ranking import _model, score_candidates
     loaded, skipped, fingerprints = {}, [], {}
     for name, family, folder, metadata in records:
+        if not requested_model(name, folder, requested):
+            continue
         try:
             if family == 'temporal_fm':
                 model = _model(ev, provider, folder.name, provider.backend, 'cpu')
@@ -107,6 +135,8 @@ def load_models(ev, provider, workspace, dataset, records):
             skipped.append({'path': str(folder), 'reason': str(exc)})
     # Read cached factors directly. Never call load_or_fit_baselines.
     for folder in sorted((workspace/'models'/dataset/'shared_chrono_baselines').glob('*')):
+        if requested and not any(kind+'_'+folder.name in requested for kind in ('svd','bpr')):
+            continue
         try:
             if '_interrupted_' in folder.name:
                 continue
@@ -116,6 +146,8 @@ def load_models(ev, provider, workspace, dataset, records):
                 raise ValueError('incompatible baseline history')
             with np.load(folder/'factors.npz', allow_pickle=False) as cache:
                 for kind in ('svd', 'bpr'):
+                    if requested and kind+'_'+folder.name not in requested:
+                        continue
                     uvec, ivec = cache[kind+'_user'].copy(), cache[kind+'_item'].copy()
                     if uvec.shape[0] != len(ev.train_users) or ivec.shape[0] != len(ev.movies):
                         raise ValueError('incompatible factor dimensions')
@@ -159,14 +191,20 @@ def run(args):
     ev = Events(workspace/'data/temporal/ml-32m')
     provider = _prepare(ev, args.backend); provider.backend = args.backend
     records, skipped = discover(workspace)
-    models, incompatible, fingerprints = load_models(ev, provider, workspace, 'ml-32m', records)
+    requested = {name.strip() for name in getattr(args, 'models', '').split(',') if name.strip()}
+    models, incompatible, fingerprints = load_models(ev, provider, workspace, 'ml-32m', records, requested)
+    if requested:
+        resolved = {alias for alias in requested if any(
+            alias == name or alias == name.removeprefix('temporal_fm_') or
+            alias == name.removeprefix('unified_hofm3_bcd_') for name in models)}
+        if requested - resolved:
+            raise ValueError('Requested saved checkpoint unavailable/incompatible: ' + ', '.join(sorted(requested-resolved)) +
+                             '. Exclusions: ' + json.dumps(skipped + incompatible))
     inventory = {'workspace': str(workspace), 'included': sorted(models),
                  'excluded': skipped + incompatible, 'base_model_training': False}
     print(json.dumps(inventory, indent=2), flush=True)
     if not models:
         raise ValueError('No compatible saved models. No training was started.')
-    if len(models) < 2:
-        raise ValueError('At least two compatible saved models are required for a stacked comparative experiment.')
     if args.audit:
         return inventory
     ids, histories, truth, _, cohort = _cohort(ev, 'test', 4.,
@@ -212,6 +250,9 @@ def run(args):
         'provenance_limit':'Input metadata checks cannot prove prior checkpoints were never tuned on original test labels. Requires original test period to have been unused for base selection.'}
     (output/'evaluation_manifest.json').write_text(json.dumps(manifest, indent=2))
     (output/'disk_inventory.json').write_text(json.dumps(inventory, indent=2))
+    if len(names) == 1:
+        single_comparison(output, names[0], args.threads)
+        return inventory
     from src.lambdarank_compare import main
     main(['--train',str(output/'train.csv'),'--valid',str(output/'valid.csv'),
           '--test',str(output/'test.csv'),'--manifest',str(output/'evaluation_manifest.json'),
@@ -222,6 +263,7 @@ def run(args):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--workspace', default='auto')
+    p.add_argument('--models', default='', help='Comma-separated exact checkpoint folder names or inventory IDs; omitted = all compatible saved models')
     p.add_argument('--backend', default='sentence', choices=['sentence','hash'])
     p.add_argument('--threads', type=int, default=2)
     p.add_argument('--train-users', type=int, default=700)
