@@ -114,6 +114,22 @@ def commands(a):
                            '--backend', a.backend, '--threads', str(a.threads)]))
     out.append(('compare', ['-m', 'src.lambdarank_compare', '--top', '4',
                             '--threads', str(a.threads), '--output', 'artifacts/rerank/comparison']))
+    if getattr(a, 'recipe', 'all') == 'light_hofm3':
+        keep = {'download', 'fm_deepfm', 'semi25', 'hofm3', 'preference_d', 'joint_hofm3'}
+        out = [(name, argv) for name, argv in out if name in keep]
+        for name, argv in out:
+            changes = {'--batch-size':'64', '--validation-users':'20',
+                       '--eval-users':'20', '--validation-candidates':'256',
+                       '--max-candidates':'256', '--hard-pool':'4'}
+            if name == 'fm_deepfm':
+                changes['--models'] = 'fm'
+            if name == 'preference_d':
+                argv += ['--batch-size', '64']
+            if name == 'joint_hofm3':
+                argv += ['--hard-negative-share', '.25', '--hard-pool', '4']
+            for flag, value in changes.items():
+                if flag in argv:
+                    argv[argv.index(flag)+1] = value
     return out
 
 
@@ -121,6 +137,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--run-dir', default='artifacts/retrain_runs/' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
     p.add_argument('--dataset', choices=['ml-32m', 'ml-1m', 'ml-latest-small'], default='ml-32m')
+    p.add_argument('--recipe', choices=['all', 'light_hofm3'], default='all')
     p.add_argument('--backend', choices=['sentence', 'hash'], default='sentence')
     p.add_argument('--threads', type=int, default=2)
     p.add_argument('--epochs', type=int, default=15)
@@ -190,7 +207,9 @@ def main():
                 raise SystemExit(f'Stage {stage} failed; see {log}. Rerun with the SAME --run-dir after fixing it.')
             marker.touch()
             print('DONE', stage, flush=True)
-        print('COMPLETE:', code / 'artifacts/rerank/comparison/comparison.md', flush=True)
+        result = (code/'models'/a.dataset/'unified_hofm3_bcd/fm_all_hofm3semi25_bpr_fresh_hofm3/weights.pt'
+                  if a.recipe == 'light_hofm3' else code/'artifacts/rerank/comparison/comparison.md')
+        print('COMPLETE:', result, flush=True)
     finally:
         lock.rmdir()
 
