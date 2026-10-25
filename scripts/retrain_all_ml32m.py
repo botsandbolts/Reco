@@ -114,7 +114,7 @@ def commands(a):
                            '--backend', a.backend, '--threads', str(a.threads)]))
     out.append(('compare', ['-m', 'src.lambdarank_compare', '--top', '4',
                             '--threads', str(a.threads), '--output', 'artifacts/rerank/comparison']))
-    if getattr(a, 'recipe', 'all') == 'light_hofm3':
+    if getattr(a, 'recipe', 'all') in ('light_hofm3', 'fm_lambdarank'):
         keep = {'download', 'fm_deepfm', 'semi25', 'hofm3', 'preference_d', 'joint_hofm3'}
         out = [(name, argv) for name, argv in out if name in keep]
         for name, argv in out:
@@ -130,6 +130,11 @@ def commands(a):
             for flag, value in changes.items():
                 if flag in argv:
                     argv[argv.index(flag)+1] = value
+    if getattr(a, 'recipe', 'all') == 'fm_lambdarank':
+        out = [(name, argv) for name, argv in out if name in ('download', 'fm_deepfm')]
+        out.append(('fm_lambdarank', ['-m', 'src.lambdarank_disk', '--workspace', '.',
+            '--backend', a.backend, '--models', 'fm_all_bpr', '--pool', '500',
+            '--threads', str(a.threads), '--output', 'artifacts/rerank/fm500']))
     return out
 
 
@@ -137,7 +142,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--run-dir', default='artifacts/retrain_runs/' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
     p.add_argument('--dataset', choices=['ml-32m', 'ml-1m', 'ml-latest-small'], default='ml-32m')
-    p.add_argument('--recipe', choices=['all', 'light_hofm3'], default='all')
+    p.add_argument('--recipe', choices=['all', 'light_hofm3', 'fm_lambdarank'], default='all')
     p.add_argument('--backend', choices=['sentence', 'hash'], default='sentence')
     p.add_argument('--threads', type=int, default=2)
     p.add_argument('--epochs', type=int, default=15)
@@ -194,6 +199,7 @@ def main():
                     **{'preference_' + stage: [base/'temporal_preferences'/f'fm_all_semi25_bpr_{stage}_jointBCD'] for stage in 'bcde'},
                     **{f'joint_hofm{order}': [base/'unified_hofm3_bcd'/f'fm_all_hofm3semi25_bpr_fresh_hofm{order}'] for order in (3,4)},
                     'compare': [code/'artifacts/rerank/comparison'],
+                    'fm_lambdarank': [code/'artifacts/rerank/fm500'],
                 }
                 stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
                 for target in targets.get(stage, []):
@@ -209,6 +215,8 @@ def main():
             print('DONE', stage, flush=True)
         result = (code/'models'/a.dataset/'unified_hofm3_bcd/fm_all_hofm3semi25_bpr_fresh_hofm3/weights.pt'
                   if a.recipe == 'light_hofm3' else code/'artifacts/rerank/comparison/comparison.md')
+        if a.recipe == 'fm_lambdarank':
+            result = code/'artifacts/rerank/fm500/comparison/comparison.md'
         print('COMPLETE:', result, flush=True)
     finally:
         lock.rmdir()
